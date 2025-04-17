@@ -130,10 +130,7 @@ export class TVDBController {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
 
-		fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-		fs.writeFileSync(cachePath, JSON.stringify(episodes, null, 2), 'utf-8');
-
-		return episodes.sort((a, b) => {
+		const sortedEpisodes = episodes.sort((a, b) => {
 			if (a.seasonNumber === b.seasonNumber) {
 				return a.number - b.number;
 			}
@@ -147,6 +144,15 @@ export class TVDBController {
 
 			return a.seasonNumber - b.seasonNumber;
 		});
+
+		fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+		fs.writeFileSync(
+			cachePath,
+			JSON.stringify(sortedEpisodes, null, 2),
+			'utf-8',
+		);
+
+		return sortedEpisodes;
 	}
 
 	public async getSeriesEpisodesPage(
