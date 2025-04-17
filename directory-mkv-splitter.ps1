@@ -1,139 +1,169 @@
 <#
 .SYNOPSIS
-Recursively finds MKV files and splits those with multiple chapters into separate files, one per chapter.
+Finds MKV files with multiple chapters in a directory (recursively) and splits them
+into separate files per chapter using MKVToolNix.
 
 .DESCRIPTION
-This script searches a specified directory and its subdirectories for MKV files (*.mkv).
-For each MKV file found, it uses 'mkvmerge.exe' (from the MKVToolNix suite) to check
-if the file contains more than one chapter. If it does, the script splits the MKV
-into multiple output files, each containing a single chapter. The original multi-chapter
-file is kept intact.
+This script requires MKVToolNix to be installed. It uses mkvinfo.exe to identify
+files with more than one chapter and then uses mkvmerge.exe to perform the splitting.
+Both executables need to be accessible via the system's PATH or by providing direct
+paths using the parameters.
 
-Requires MKVToolNix to be installed and 'mkvmerge.exe' to be accessible in the system PATH.
+The split files will be saved in the same directory as the original file, with names
+like "OriginalName-chapter-01.mkv", "OriginalName-chapter-02.mkv", etc.
 
-.PARAMETER InputPath
-The starting directory path to search for MKV files recursively.
+.PARAMETER DirectoryPath
+The directory to search for MKV files. The search is recursive.
+
+.PARAMETER MkvInfoPath
+(Optional) The full path to the mkvinfo.exe executable.
+If not provided, the script assumes 'mkvinfo' is in the system PATH.
 
 .PARAMETER MkvMergePath
-(Optional) The full path to the 'mkvmerge.exe' executable if it's not in the system PATH.
+(Optional) The full path to the mkvmerge.exe executable.
+If not provided, the script assumes 'mkvmerge' is in the system PATH.
 
 .EXAMPLE
-.\Split-MkvByChapter.ps1 -InputPath "D:\MyRippedDVDs"
-
-Searches D:\MyRippedDVDs and its subfolders for MKV files and splits multi-chapter ones.
+.\Split-MkvChapters.ps1 -DirectoryPath "C:\MyVideos"
 
 .EXAMPLE
-.\Split-MkvByChapter.ps1 -InputPath "C:\Users\Me\Videos\Temp" -MkvMergePath "C:\Program Files\MKVToolNix\mkvmerge.exe"
-
-Uses a specific path for mkvmerge.exe while searching the Temp folder.
+.\Split-MkvChapters.ps1 -DirectoryPath "D:\MoviesToProcess" -MkvInfoPath "C:\Program Files\MKVToolNix\mkvinfo.exe" -MkvMergePath "C:\Program Files\MKVToolNix\mkvmerge.exe"
 
 .NOTES
-Author: AI Assistant
-Date:   2025-04-16
-Requires: MKVToolNix (mkvmerge.exe)
-Ensure you have enough disk space, as splitting creates new files.
-The original files are NOT deleted. Test on a small sample first!
-Output files are named like: OriginalName-chapter##.mkv (e.g., Show_S01E01E02-chapter01.mkv)
+Requires MKVToolNix. Download from https://mkvtoolnix.download/
+Original files are NOT deleted or modified. New files are created for the split chapters.
+Ensure you have enough disk space for the new files.
 #>
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$InputPath,
+    [Parameter(Mandatory = $true, Position = 0)]
+    [string]$DirectoryPath,
 
     [Parameter(Mandatory = $false)]
-    [string]$MkvMergePath = "mkvmerge.exe" # Default assumes it's in PATH
+    [string]$MkvInfoPath = "mkvinfo", # Default assumption: mkvinfo is in PATH
+
+    [Parameter(Mandatory = $false)]
+    [string]$MkvMergePath = "mkvmerge" # Default assumption: mkvmerge is in PATH
 )
 
-# --- Configuration ---
-$VerbosePreference = 'Continue' # Show detailed messages
-
-# --- Validate Input Path ---
-if (-not (Test-Path -Path $InputPath -PathType Container)) {
-    Write-Error "Input path '$InputPath' not found or is not a directory."
+# Verify the directory exists
+if (-not (Test-Path $DirectoryPath -PathType Container)) {
+    Write-Error "Directory not found: '$DirectoryPath'"
     return
 }
-Write-Verbose "Starting search in directory: $InputPath"
 
-# --- Check for mkvmerge ---
-$mkvmerge = Get-Command $MkvMergePath -ErrorAction SilentlyContinue
-if (-not $mkvmerge) {
-    Write-Error "Could not find '$MkvMergePath'. Make sure MKVToolNix is installed and '$MkvMergePath' is correct or in your system PATH."
+# --- Verify Tools ---
+$mkvinfoExe = Get-Command $MkvInfoPath -ErrorAction SilentlyContinue
+if (-not $mkvinfoExe) {
+    Write-Error "Cannot find '$MkvInfoPath'. Make sure MKVToolNix is installed and '$MkvInfoPath' is correct (either in PATH or specified via -MkvInfoPath parameter)."
     return
 }
-Write-Verbose "Using mkvmerge found at: $($mkvmerge.Source)"
+Write-Verbose "Using mkvinfo at: $($mkvinfoExe.Source)"
 
-# --- Find MKV Files Recursively ---
-Write-Verbose "Searching for MKV files..."
-$mkvFiles = Get-ChildItem -Path $InputPath -Filter *.mkv -Recurse -File
+$mkvmergeExe = Get-Command $MkvMergePath -ErrorAction SilentlyContinue
+if (-not $mkvmergeExe) {
+    Write-Error "Cannot find '$MkvMergePath'. Make sure MKVToolNix is installed and '$MkvMergePath' is correct (either in PATH or specified via -MkvMergePath parameter)."
+    return
+}
+Write-Verbose "Using mkvmerge at: $($mkvmergeExe.Source)"
+# --- End Verify Tools ---
 
+Write-Host "Searching for MKV files in '$DirectoryPath'..."
+
+# Get all MKV files in the directory and subdirectories
+$mkvFiles = Get-ChildItem -Path $DirectoryPath -Recurse -Filter "*.mkv"
 if ($mkvFiles.Count -eq 0) {
-    Write-Warning "No MKV files found in '$InputPath' or its subdirectories."
+    Write-Warning "No MKV files found in '$DirectoryPath'."
     return
 }
-Write-Verbose "Found $($mkvFiles.Count) MKV files."
 
-# --- Process Each MKV File ---
+# Process each MKV file
 foreach ($file in $mkvFiles) {
-    Write-Host "`nProcessing file: $($file.FullName)"
+    Write-Host "`n--- Processing '$($file.FullName)' ---"
 
-    # Get file information, specifically looking for chapters, in JSON format
-    $jsonInfo = ""
+    # === Step 1: Analyze chapters using mkvinfo ===
+    Write-Verbose "Running mkvinfo..."
+    $chapters = @() # Reset chapters for each file
     try {
-        Write-Verbose "Checking chapters for '$($file.Name)'..."
-        # Use -J for JSON output, easier to parse
-        $jsonInfo = & $MkvMergePath -J $file.FullName | ConvertFrom-Json -ErrorAction Stop
+        # Run mkvinfo and capture output
+        $mkvinfoOutput = & $MkvInfoPath $file.FullName 2>&1 # Capture stdout and stderr
+
+        # Check if mkvinfo reported an error (e.g., file invalid)
+        if ($LASTEXITCODE -ne 0 -or $mkvinfoOutput -match "Error:") {
+             Write-Warning "mkvinfo encountered an error or issue processing '$($file.Name)':`n$($mkvinfoOutput -join "`n")"
+             continue # Skip to the next file
+        }
+
+        # Parse the output for chapters
+        $currentTimestamp = $null
+        $mkvinfoOutput -split '\r?\n' | ForEach-Object {
+            $line = $_
+            if ($line -match 'Chapter time start:\s*([\d:.]+)') {
+                $currentTimestamp = $Matches[1]
+            }
+            elseif (($line -match 'Chapter string:\s*(.+)') -and ($null -ne $currentTimestamp)) {
+                $chapters += [PSCustomObject]@{
+                    Timestamp = $currentTimestamp
+                    Name      = $Matches[1].Trim()
+                }
+                $currentTimestamp = $null # Reset for the next potential chapter pair
+            }
+         }
     }
     catch {
-        Write-Warning "Failed to get info for '$($file.FullName)'. Error: $($_.Exception.Message). Skipping file."
+        Write-Error "Error running mkvinfo on '$($file.FullName)': $_"
         continue # Skip to the next file
     }
 
-    # Check if chapters exist and count them
-    $chapterCount = 0
-    if ($jsonInfo.PSObject.Properties.Name -contains 'chapters') {
-        $chapterCount = $jsonInfo.chapters.Count
+    # === Step 2: Decide whether to split based on chapter count ===
+    $chapterCount = $chapters.Count
+    Write-Host "Found $chapterCount chapter(s) in '$($file.Name)'."
+
+    if ($chapterCount -le 1) {
+        Write-Host "Skipping splitting as file has 0 or 1 chapter."
+        continue # Skip to the next file
     }
 
-    Write-Verbose "Chapter count: $chapterCount"
+    # === Step 3: Split the file using mkvmerge ===
+    Write-Host "File has multiple chapters. Proceeding with split..."
 
-    # --- Split if more than one chapter ---
-    if ($chapterCount -gt 1) {
-        Write-Host "  File has $chapterCount chapters. Splitting..."
+    # Construct the output filename pattern
+    $baseName = $file.BaseName # Name without extension
+    $extension = $file.Extension # Extension (e.g., ".mkv")
+    # Output pattern for mkvmerge: places files in the same directory as the original
+    # %02d ensures chapter numbers are like 01, 02, 03...
+    $outputPattern = Join-Path -Path $file.DirectoryName -ChildPath "$($baseName)-chapter-%02d$($extension)"
 
-        # Construct the output filename pattern
-        # Example: "MyVideo.mkv" -> "MyVideo-chapter%02d.mkv" -> MyVideo-chapter01.mkv, MyVideo-chapter02.mkv
-        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-        $directory = $file.DirectoryName
-        # Use %02d for two-digit chapter numbers with leading zeros
-        $outputPattern = Join-Path -Path $directory -ChildPath "$baseName-chapter%02d.mkv"
+    Write-Verbose "Output pattern: $outputPattern"
 
-        # Construct the mkvmerge command for splitting
-        $splitArgs = @(
-            '-o', "`"$outputPattern`"", # Output pattern (needs quotes if path has spaces)
-            '--split', 'chapters:all',
-            "`"$($file.FullName)`""    # Input file (needs quotes if path has spaces)
-        )
+    # Prepare arguments for mkvmerge
+    $mkvmergeArgs = @(
+        "-o", # Output file specifier
+        $outputPattern,
+        "--split", # Split mode activation
+        "chapters:all", # Split based on all chapter start times
+        $file.FullName # The input file
+    )
 
-        Write-Verbose "Executing: $MkvMergePath $($splitArgs -join ' ')"
+    Write-Host "Running mkvmerge to split '$($file.Name)'..."
+    Write-Verbose "Executing: $MkvMergePath $mkvmergeArgs"
 
-        # Execute the split command
-        try {
-            # Using Start-Process and Wait might be more robust for long operations
-            $process = Start-Process -FilePath $MkvMergePath -ArgumentList $splitArgs -Wait -NoNewWindow -PassThru
-            if ($process.ExitCode -ne 0) {
-                throw "mkvmerge exited with code $($process.ExitCode)"
-            }
-            Write-Host "  Successfully split '$($file.Name)' based on chapters."
-            Write-Verbose "  Output files should be in: $directory"
+    try {
+        # Execute mkvmerge
+        $mkvmergeOutput = & $MkvMergePath $mkvmergeArgs 2>&1 # Capture stdout and stderr
+
+        # Check exit code and output for errors
+        if ($LASTEXITCODE -ne 0 -or $mkvmergeOutput -match "Error:") {
+            Write-Error "mkvmerge failed to split '$($file.FullName)'. Exit code: $LASTEXITCODE"
+            Write-Error "mkvmerge output:`n$($mkvmergeOutput -join "`n")"
+            # Optional: Could attempt cleanup of partially created files here if needed
+        } else {
+            Write-Host "Successfully split '$($file.Name)' based on chapters."
+            Write-Verbose "mkvmerge output:`n$($mkvmergeOutput -join "`n")"
         }
-        catch {
-            Write-Warning "Failed to split '$($file.FullName)'. Error: $($_.Exception.Message)"
-            Write-Warning "  mkvmerge command might have failed. Check MKVToolNix GUI or command line output for details if possible."
-        }
-
     }
-    else {
-        Write-Host "  Skipping file (0 or 1 chapter found)."
+    catch {
+        Write-Error "An exception occurred while running mkvmerge on '$($file.FullName)': $_"
     }
 }
 
-Write-Host "`nScript finished."
+Write-Host "`n--- Script finished ---"
