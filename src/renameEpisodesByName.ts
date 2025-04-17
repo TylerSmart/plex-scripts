@@ -91,11 +91,11 @@ async function main() {
 
 		const properEpisodeName = `${
 			series.name
-		} S${episode.seasonNumber.toLocaleString(undefined, {
+		} - S${episode.seasonNumber.toLocaleString(undefined, {
 			minimumIntegerDigits: 2,
 		})}E${episode.number.toLocaleString(undefined, {
 			minimumIntegerDigits: 2,
-		})} ${episode.name}`;
+		})} - ${episode.name}`;
 
 		let selectedFilePath: string | null = null;
 
