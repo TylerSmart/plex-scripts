@@ -182,7 +182,7 @@ async function main() {
 		}
 
 		const newFileName = `${properEpisodeName.replace(
-			/[^a-zA-Z0-9\s-]/g,
+			/[<>:"/\\|?*\x00-\x1F]/g,
 			'',
 		)}.mkv`;
 		const newFilePath = path.join(
@@ -191,6 +191,8 @@ async function main() {
 		);
 
 		if (!isTestRun) fs.renameSync(selectedFilePath, newFilePath);
+
+		console.log(`\nRenamed\n\t${selectedFilePath}\n\t${newFileName}`);
 
 		filePaths = filePaths.filter((f) => f !== selectedFilePath);
 	}
