@@ -182,7 +182,7 @@ async function main() {
 		}
 
 		const newFileName = `${properEpisodeName.replace(
-			/[<>:"/\\|?*\x00-\x1F]/g,
+			/[<>:"/\\|?*\x00-\x1F.]/g,
 			'',
 		)}.mkv`;
 		const newFilePath = path.join(
