@@ -1,0 +1,27 @@
+{
+	"name": "plex-scripts",
+	"version": "1.0.0",
+	"main": "index.js",
+	"author": {
+		"email": "tylerstevensmart@gmail.com",
+		"name": "Tyler Smart",
+		"url": "https://tylersmart.dev"
+	},
+	"license": "ISC",
+	"description": "A collection of scripts to help with Plex library management.",
+	"scripts": {
+		"build": "tsc",
+		"renameEpisodesByName": "npm run build && node dist/renameEpisodesByName.js",
+		"renameEpisodesByName:test": "npm run build && node dist/renameEpisodesByName.js --test-run",
+		"renameEpisodesBySE": "npm run build && node dist/renameEpisodesBySE.js",
+		"renameEpisodesBySE:test": "npm run build && node dist/renameEpisodesBySE.j --test-runs"
+	},
+	"devDependencies": {
+		"@types/node": "^22.14.1",
+		"typescript": "^5.8.3"
+	},
+	"dependencies": {
+		"@types/inquirer": "^9.0.7",
+		"inquirer": "^12.5.2"
+	}
+}
