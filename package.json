@@ -14,7 +14,7 @@
 		"renameEpisodesByName": "npm run build && node dist/renameEpisodesByName.js",
 		"renameEpisodesByName:test": "npm run build && node dist/renameEpisodesByName.js --test-run",
 		"renameEpisodesBySE": "npm run build && node dist/renameEpisodesBySE.js",
-		"renameEpisodesBySE:test": "npm run build && node dist/renameEpisodesBySE.j --test-runs"
+		"renameEpisodesBySE:test": "npm run build && node dist/renameEpisodesBySE.js --test-run"
 	},
 	"devDependencies": {
 		"@types/node": "^22.14.1",

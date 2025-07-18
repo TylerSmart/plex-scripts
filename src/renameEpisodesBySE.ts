@@ -85,6 +85,8 @@ async function main() {
 		extension,
 	);
 
+	console.log(`\nFound ${filePaths.length} files.`);
+
 	const episodes: Episode[] = await tvdb.getSeriesEpisodes(series.id);
 
 	const episodesWithNoMatches: string[] = [];
@@ -112,22 +114,15 @@ async function main() {
 			minimumIntegerDigits: 2,
 		})} - ${episode.name}`;
 
+		const seNameRegex = new RegExp(
+			`S0*${episode.seasonNumber}E0*${episode.number}`,
+			'i',
+		);
+
 		let selectedFilePath: string | null = null;
 
-		const episodeNameSimplified = episode.name
-			.replace(/[^a-zA-Z0-9]/g, '')
-			.toLowerCase();
-
 		const exactMatches = filePaths.filter((file) => {
-			const fileNameWithoutExtension = path.basename(file, `.${extension}`);
-
-			if (fileNameWithoutExtension == properEpisodeName) return true;
-
-			const fileNameSimplified = fileNameWithoutExtension
-				.replace(/[^a-zA-Z0-9]/g, '')
-				.toLowerCase();
-
-			return fileNameSimplified == episodeNameSimplified;
+			return seNameRegex.test(file);
 		});
 
 		if (exactMatches.length == 1) selectedFilePath = exactMatches[0];
@@ -149,48 +144,6 @@ async function main() {
 					},
 				])
 				.then((res) => res.selectedFile);
-		}
-
-		if (!selectedFilePath) {
-			const similarMatches = filePaths.filter((file) => {
-				const fileNameWithoutExtension = path.basename(
-					file,
-					`.${extension}`,
-				);
-				const fileNameSimplified = fileNameWithoutExtension
-					.replace(/[^a-zA-Z0-9]/g, '')
-					.toLowerCase();
-
-				return (
-					isDistanceLessThan(
-						episodeNameSimplified,
-						fileNameSimplified,
-						3,
-					) ||
-					episodeNameSimplified.includes(fileNameSimplified) ||
-					fileNameSimplified.includes(episodeNameSimplified)
-				);
-			});
-
-			if (similarMatches.length > 0) {
-				console.log();
-				selectedFilePath = await inquirer
-					.prompt([
-						{
-							type: 'list',
-							name: 'selectedFile',
-							message: `Similar files found for episode ${properEpisodeName}. Please select one:`,
-							choices: [
-								...similarMatches.map((f) => ({
-									name: f,
-									value: f,
-								})),
-								{ name: 'None of the above', value: null },
-							],
-						},
-					])
-					.then((res) => res.selectedFile);
-			}
 		}
 
 		if (!selectedFilePath) {
