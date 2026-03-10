@@ -36,10 +36,14 @@ async function main() {
 	}
 
 	console.log();
-	const seriesName: string | null = config.USE_DIRECTORY_NAME
+	let seriesName: string | null = config.USE_DIRECTORY_NAME
 		? path.basename(directory)
 		: config.SERIES_NAME ??
 		  (await prompt('Please enter the name of the series: '));
+
+	if (!seriesName) {
+		seriesName = path.basename(directory);
+	}
 
 	if (!seriesName) {
 		throw new Error('No series name provided');
